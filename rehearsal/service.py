@@ -100,6 +100,7 @@ _MANAGE_COMMANDS = {
 }
 
 _TROUPE_ARG_RE = re.compile(r"(?:^|\s)剧组\s*[=:：]\s*(?P<name>[^\s]+)")
+_INIT_GROUP_RE = re.compile(r"(?:群号|群|QQ群|qq群)\s*[=:：]\s*(?P<gid>\d{5,12})")
 
 _CONFIG_ALIASES = {
     "默认提醒": "default_remind",
@@ -278,6 +279,22 @@ class RehearsalService:
             if not self.repo.has_admin_record(admin):
                 self.repo.add_admin(admin, granted_by="config", source="config")
                 log.info("已从配置写入初始管理员：%s", admin)
+        # 防止锁死：配置了管理员但数据库中没有任何有效管理员时，按配置恢复
+        if self.settings.admins and not self.repo.list_admins():
+            for admin in self.settings.admins:
+                self.repo.add_admin(admin, granted_by="config", source="config")
+            log.warning(
+                "当前没有有效管理员，已按 REHEARSAL_ADMINS 恢复：%s",
+                "、".join(self.settings.admins),
+            )
+        admins = self.repo.list_admins()
+        if admins:
+            log.info("当前有效管理员：%s", "、".join(admins))
+        else:
+            log.warning(
+                "未配置任何有效管理员。请在 .env 设置 REHEARSAL_ADMINS（JSON 数组），"
+                "或运行 python scripts/grant_admin.py <QQ> 恢复。"
+            )
 
     def maintenance(self) -> None:
         now = self.now()
@@ -315,6 +332,8 @@ class RehearsalService:
             return await self._cmd_help(ctx, cmd[2:])
         if cmd == "初始化剧组":
             return await self._cmd_init_troupe(ctx, rest)
+        if cmd == "剧组列表":
+            return await self._cmd_troupe_list(ctx)
         if cmd == "我的排练":
             return await self._cmd_my_schedule(ctx, rest)
         if cmd in ("授权管理员", "取消管理员"):
@@ -645,8 +664,8 @@ class RehearsalService:
         return [self._reply(ctx, message)]
 
     async def _cmd_init_troupe(self, ctx: CommandContext, rest: str) -> list[Reply]:
-        if ctx.scope != "group":
-            raise StateError("请在 QQ 群内初始化剧组。")
+        if ctx.scope == "private":
+            return await self._cmd_init_troupe_private(ctx, rest)
         existing = self.repo.get_troupe_by_group(ctx.group_id or "")
         name = rest.strip()
         if len(name) > 30:
@@ -692,7 +711,14 @@ class RehearsalService:
             self.settings.allow_owner_init and ctx.sender_role == "owner"
         )
         if not allowed:
-            raise PermissionDenied("只有管理员或群主可以初始化剧组。")
+            raise PermissionDenied(
+                "只有管理员或群主可以初始化剧组。\n"
+                "若你确认自己是管理员：请检查部署配置 REHEARSAL_ADMINS 是否为 JSON 数组"
+                '（例如 ["123456789"]），修改后重启机器人；'
+                "也可在容器内运行 python scripts/grant_admin.py <QQ> 恢复。\n"
+                f"当前群主自助初始化："
+                f"{'已开启' if self.settings.allow_owner_init else '已关闭'}。"
+            )
         now = self.now()
         troupe = self.repo.create_troupe(
             name,
@@ -733,6 +759,151 @@ class RehearsalService:
                 f"时间=周五7~10\n地点=一排\n人员=@张三\n",
             )
         ]
+
+    def _admin_recovery_hint(self) -> str:
+        return (
+            "请检查部署配置 REHEARSAL_ADMINS 是否为 JSON 数组"
+            '（例如 ["123456789"]），修改后重启机器人；'
+            "也可在容器内运行 python scripts/grant_admin.py <QQ> 恢复。"
+        )
+
+    def _parse_init_args(self, rest: str) -> tuple[str, str | None]:
+        text = (rest or "").strip()
+        group_id: str | None = None
+        match = _INIT_GROUP_RE.search(text)
+        if match:
+            group_id = match.group("gid")
+            text = (text[: match.start()] + " " + text[match.end() :]).strip()
+        else:
+            number = re.search(r"(?<!\d)(\d{5,12})(?!\d)", text)
+            if number:
+                group_id = number.group(1)
+                text = (text[: number.start()] + " " + text[number.end() :]).strip()
+        return " ".join(text.split()), group_id
+
+    async def _cmd_init_troupe_private(
+        self, ctx: CommandContext, rest: str
+    ) -> list[Reply]:
+        if not self.repo.is_admin(ctx.qq):
+            raise PermissionDenied(
+                "只有管理员可以在私聊初始化剧组。\n" + self._admin_recovery_hint()
+            )
+        name, group_id = self._parse_init_args(rest)
+        if not group_id:
+            raise UserError(
+                "私聊初始化需要提供剧组群号，例如：\n"
+                f"{self.prefix}初始化剧组 某某剧组 群号=123456789"
+            )
+        if not name:
+            raise UserError(
+                "请提供剧组名称，例如：\n"
+                f"{self.prefix}初始化剧组 某某剧组 群号=123456789"
+            )
+        if len(name) > 30:
+            raise UserError("剧组名称不能超过 30 个字符。")
+        existing = self.repo.get_troupe_by_group(group_id)
+        if existing and existing.status == "active":
+            raise StateError(
+                f"群 {group_id} 已绑定剧组「{existing.name}」。\n"
+                f"如需改名：{self.prefix}修改剧组名称 新名称 剧组={existing.name}"
+            )
+        try:
+            members = await self.gateway.get_group_member_list(group_id)
+        except Exception as exc:
+            raise StateError(
+                f"无法读取群 {group_id} 的成员列表。\n"
+                "请确认群号正确、机器人已加入该群，并有权读取群成员。"
+            ) from exc
+
+        now = self.now()
+        if existing is not None:
+            self.repo.update_troupe(existing.id, name=name, status="active")
+            troupe = self.repo.get_troupe(existing.id) or existing
+            summary = f"私聊重新绑定已解绑剧组，群 {group_id}"
+            reply_title = f"✅ 已重新绑定剧组「{troupe.name}」（群 {group_id}）。\n历史数据保留。"
+        else:
+            troupe = self.repo.create_troupe(
+                name,
+                group_id,
+                timezone=self.settings.timezone,
+                default_remind_minutes=self.settings.default_remind_minutes,
+                private_remind=self.settings.default_private_remind,
+                ambiguous_evening_threshold=self.settings.default_evening_threshold,
+                publish_confirm_when_clean=self.settings.default_publish_confirm,
+                degrade_at_scope=self.settings.default_degrade_scope,
+                now=now,
+            )
+            summary = f"私聊初始化剧组，绑定群 {group_id}"
+            reply_title = f"✅ 剧组「{troupe.name}」已初始化并绑定群 {group_id}。"
+        for member in members:
+            if member.nickname:
+                self.repo.upsert_user(member.qq, member.nickname)
+        self.repo.set_auto_directors(
+            troupe.id, [m.qq for m in members if m.role in ("owner", "admin")]
+        )
+        self.repo.add_audit(
+            troupe.id,
+            ctx.qq,
+            "init_troupe",
+            target=troupe.name,
+            summary=summary,
+            now=now,
+        )
+        role = role_label(self._role(troupe, ctx.qq))
+        return [
+            self._reply(
+                ctx,
+                f"{reply_title}\n"
+                "群主 / 群管理员已同步为导演。\n"
+                f"你的角色：{role}\n"
+                f"默认提醒：{format_remind_minutes(troupe.reminders)}\n\n"
+                "后续可在私聊使用：\n"
+                f"{self.prefix}发布排练 剧组={troupe.name} 时间=周五7~10 ...\n"
+                f"{self.prefix}剧组列表\n"
+                f"或在群 {group_id} 内发送 {self.prefix}帮助。",
+            )
+        ]
+
+    async def _cmd_troupe_list(self, ctx: CommandContext) -> list[Reply]:
+        is_admin = self.repo.is_admin(ctx.qq)
+        if ctx.scope == "group":
+            troupe = self.repo.get_troupe_by_group(ctx.group_id or "")
+            if troupe is None:
+                raise NotFound(
+                    f"本群尚未绑定剧组。管理员可发送：{self.prefix}初始化剧组 剧组名称"
+                )
+            troupes = [troupe]
+            title = "【剧组列表】当前群"
+        else:
+            troupes = self._candidate_troupes(ctx.qq, manage_only=False)
+            title = "【剧组列表】"
+        if not troupes:
+            return [
+                self._reply(
+                    ctx,
+                    "你还没有加入任何剧组。\n"
+                    f"管理员可在私聊发送：{self.prefix}初始化剧组 某某剧组 群号=群号",
+                )
+            ]
+        lines = [title, f"全局管理员：{'是' if is_admin else '否'}"]
+        for index, troupe in enumerate(troupes, 1):
+            role = self._display_role(troupe, ctx)
+            role_text = "管理员" if is_admin else role_label(role)
+            status = "已解绑" if troupe.status != "active" else "正常"
+            lines.append(f"{index}. {troupe.name}（群 {troupe.group_id}）· {role_text} · {status}")
+        if ctx.scope == "private":
+            managed = [
+                t
+                for t in troupes
+                if self._role(t, ctx.qq) in ("director", "assistant")
+            ]
+            if len(managed) > 1:
+                lines.append("提示：你管理多个剧组，命令中用 剧组=名称 指定。")
+            if is_admin:
+                lines.append(
+                    f"添加剧组：{self.prefix}初始化剧组 某某剧组 群号=123456789"
+                )
+        return [self._reply(ctx, "\n".join(lines))]
 
     async def _cmd_rename_troupe(
         self, ctx: CommandContext, troupe: Troupe, rest: str
@@ -1981,8 +2152,6 @@ class RehearsalService:
         self, ctx: CommandContext, troupe: Troupe
     ) -> list[Reply]:
         self._require(troupe, ctx.qq, "sync_members")
-        if ctx.scope != "group":
-            raise StateError("请在群内执行同步成员。")
         added, removed, total = await self.sync_group_roles(troupe.group_id)
         self.repo.add_audit(
             troupe.id,

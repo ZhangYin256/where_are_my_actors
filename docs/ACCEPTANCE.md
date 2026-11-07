@@ -3,12 +3,13 @@
 对照 `docs/SPEC.md` v1.0 的验收标准与功能需求，逐项说明实现位置与验证方式。
 
 - 验收日期：2026-11-07
-- 版本：1.1.0
-- 自动化测试：**195 个，全部通过**
+- 版本：1.2.0
+- 自动化测试：**209 个，全部通过**
 - 测试环境：Windows 11 · Python 3.12.14 · SQLite 3（stdlib）· pytest 9
 - 复现命令：`uv run pytest`
 - 需求变更：v1.1 调整发布确认默认行为（无问题直接发布，可配置为总是预览），
-  私聊管理按“本人管理的剧组”选择剧组；详见第 11 节。
+  私聊管理按“本人管理的剧组”选择剧组；v1.2 新增管理员私聊初始化、`#剧组列表`、
+  私聊 `#同步成员` 与管理员恢复机制。详见第 11 节。
 
 > Docker 相关条目提供了完整文件与部署步骤；本仓库开发环境未安装 Docker，镜像构建请在具备 Docker 的机器上按 [DEPLOY-DOCKER.md](DEPLOY-DOCKER.md) 执行。
 
@@ -169,7 +170,7 @@
 
 | 需求 | 实现 | 测试 / 文档 |
 |---|---|---|
-| FR-01 剧组绑定 | `_cmd_init_troupe` / `_cmd_rename_troupe` / `_cmd_unbind_troupe`，`troupe.group_id UNIQUE` | `test_permissions.py::test_init_troupe_by_owner`、`test_admin_rename_troupe`、`test_unbind_requires_admin_and_stops_commands`；`test_db.py::test_troupe_group_unique` |
+| FR-01 剧组绑定 | `_cmd_init_troupe`（群内 / 私聊）、`_cmd_rename_troupe`、`_cmd_unbind_troupe`、`_cmd_troupe_list`；`troupe.group_id UNIQUE` | `test_permissions.py::test_init_troupe_by_owner`、`test_private_admin.py::test_group_init_by_admin_without_owner_role`、`test_private_init_creates_troupe`、`test_private_init_bot_not_in_group`、`test_troupe_list_private_admin`；`test_db.py::test_troupe_group_unique` |
 | FR-02 角色授权 | `_cmd_grant`、`_cmd_global_admin`、`role_binding` / `admin_binding` | `test_permissions.py`（18 例） |
 | FR-03 演员管理 | `_cmd_actor`、`actor_profile` | `test_admin.py::test_add_and_list_actors`、`test_actor_alias_and_tag`、`test_remove_actor` |
 | FR-04 发布通知 | `_cmd_publish` / `_publish_now` / `publish_confirm_when_clean` + `preview_message` + `notice_message` | `test_publish.py`（23 例） |
@@ -203,7 +204,7 @@
 | 长消息分段 | `split_message` + gateway 拆分，`test_message.py` |
 | 失败重试 | 最多 3 次，可配置；失败写审计 |
 | 权限 / 隐私 | 权限矩阵、私聊仅本人、审计仅管理角色 |
-| 可维护性 | 模块化、195 测试、中文日志/错误、备份脚本 |
+| 可维护性 | 模块化、209 测试、中文日志/错误、备份脚本 |
 | 可用性 | 中文提示、智能发布确认、帮助、错误修正建议 |
 
 ---
@@ -215,6 +216,7 @@
 | 管理员存储 | 使用独立 `admin_binding` 全局表，而非规格 `role_binding` 的 troupe 级记录；符合“管理员管理所有剧组”的语义 |
 | 发布确认 | 规格要求发布前必须预览确认；v1.1 起默认“无问题直接发布”，有风险仍强制预览，可用 `发布确认=开` 恢复总是预览（需求变更） |
 | 私聊多剧组 | 管理命令按“本人担任导演 / 副导演的剧组”自动选择，恰好一个时可省略 `剧组=`；查询按参与剧组判断（需求变更） |
+| 私聊初始化 | 规格仅在群内初始化 | 管理员可私聊 `#初始化剧组 名称 群号=...`；新增 `#剧组列表`、私聊 `#同步成员`；管理员锁死可用脚本恢复（需求变更） |
 | 重发确认 | 增加 `#确认重发 R001`，满足“重发前支持预览” |
 | 彻底删除 | 增加 `#彻底删除`（仅管理员），对应“管理员可物理删除” |
 | 群主初始化 | 默认允许群主自助 `#初始化剧组`，可通过 `REHEARSAL_ALLOW_OWNER_INIT=false` 关闭 |
@@ -234,6 +236,9 @@
 - [ ] `docker compose ps`：两个容器 Up，bot 为 healthy
 - [ ] `#帮助` 有回复，角色显示正确
 - [ ] 群内 `#初始化剧组 验收剧组` 成功
+- [ ] 管理员私聊 `#初始化剧组 新剧组 群号=<群号>` 成功，群内无消息
+- [ ] `#剧组列表` 显示全局管理员身份、群号与角色
+- [ ] 误删 / 停用管理员后，`docker compose exec -T bot python scripts/grant_admin.py <QQ>` 可恢复
 - [ ] `#授权副导演 @测试账号` 成功；该账号可发布、可删除、可查审计
 - [ ] 该账号 `#授权导演 @某人` 被拒绝
 - [ ] 发布通知（无风险）：`#发布排练` 直接发送 `#排练通知`，无需确认
@@ -243,6 +248,7 @@
 - [ ] 文本人员提示“不能 @”，群通知中文本人员未被 @
 - [ ] 私聊管理多剧组：管理一个时可省略 `剧组=`；管理多个时提示指定
 - [ ] 私聊查询多剧组：同时参与多个时要求 `剧组=`
+- [ ] 私聊 `#同步成员 剧组=...` 可同步群主 / 群管理员
 - [ ] 修改地点 → 保存后群内无消息 → `#排练重发` + 确认 → 群内收到更新通知
 - [ ] 取消排练 → `通知=是` → 群内收到 `#排练取消通知`
 - [ ] 私聊 `#我的排练` 只显示本人安排，无他人 QQ
@@ -259,6 +265,7 @@
 - 规格中的 **P0 功能全部实现**；
 - **12.1 – 12.8 验收项均有对应实现与自动化测试**；
 - v1.1 需求变更（发布确认可配置、私聊多剧组选择）已实现并补充测试；
-- 195 个测试覆盖时间、权限、发布、修改、提醒、查询、配置、审计、模拟器与数据库；
+- v1.2 需求变更（私聊初始化 / 剧组列表 / 私聊同步、管理员恢复）已实现并补充测试；
+- 209 个测试覆盖时间、权限、发布、修改、提醒、查询、配置、审计、模拟器与数据库；
 - 部署、使用、配置、运维、架构、开发文档齐全；
 - 遗留差异均已在第 11 节说明，不阻塞验收。

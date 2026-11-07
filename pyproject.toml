@@ -1,6 +1,6 @@
 [project]
 name = "where-are-my-actors"
-version = "1.1.0"
+version = "1.2.0"
 description = "排练通知 QQ 机器人（NoneBot2 + NapCat + SQLite）"
 readme = "README.md"
 requires-python = ">=3.11"

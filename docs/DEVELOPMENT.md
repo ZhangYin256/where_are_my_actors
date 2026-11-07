@@ -53,7 +53,7 @@ rehearsal/                 核心库（不依赖 NoneBot）
 └── simulator.py           离线模拟器
 
 plugins/rehearsal_bot/     NoneBot2 适配层（事件 → 核心 → 发送）
-tests/                     pytest（195 个）
+tests/                     pytest（209 个）
 scripts/                   备份 / 健康检查 / 演示生成
 docs/                      文档
 ```
@@ -126,6 +126,7 @@ async def test_example(app):
 | `test_queries.py` | 列表、历史、详情、我的排练、隐私 |
 | `test_permissions.py` | 权限矩阵、自动导演、授权、解绑、初始化 |
 | `test_multi_troupe.py` | 私聊多剧组选择、管理 / 查询候选剧组 |
+| `test_private_admin.py` | 私聊初始化、剧组列表、私聊同步、管理员恢复 |
 | `test_admin.py` | 演员、配置、全局配置、审计、帮助 |
 | `test_message.py` | 长消息拆分、OneBot 转换 |
 | `test_simulator.py` | 模拟器端到端 |

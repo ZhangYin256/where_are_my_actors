@@ -42,7 +42,7 @@ def overview(
     lines.append("人员=@张三 @李四 制作组")
     lines.append("内容=1. 开场 2. 走位")
     lines.append("备注=自愿参加")
-    lines.append(f"→ 发送后按提示执行 {prefix}确认发布 P001")
+    lines.append(f"→ 无风险直接发送；出现预览时执行 {prefix}确认发布 P001")
     lines.append("")
     lines.append("二、查询（所有成员）")
     lines.append(f"{prefix}排练列表        查看本剧组未来排练")
@@ -50,6 +50,7 @@ def overview(
     lines.append(f"{prefix}排练历史        查看历史排练")
     lines.append(f"{prefix}排练详情 3      查看编号 3 的详情")
     lines.append(f"{prefix}我的排练        私聊查询本人跨剧组安排")
+    lines.append(f"{prefix}剧组列表        私聊查看自己参与的剧组")
     lines.append("")
     lines.append("三、管理")
     lines.append(f"{prefix}排练修改 3 时间=周五8~10")
@@ -61,7 +62,8 @@ def overview(
     lines.append(f"{prefix}审计日志 20")
     lines.append("")
     if is_private:
-        lines.append("私聊发布时请附加 剧组=剧组名称；仅管理一个剧组时可省略。")
+        lines.append("私聊管理：管理多个剧组时用 剧组=名称 指定，恰好一个可省略。")
+        lines.append("管理员私聊初始化：#初始化剧组 剧组名 群号=123456789")
         lines.append("")
     lines.append(f"查看更多：{prefix}帮助发布排练、{prefix}帮助查询排练、{prefix}帮助提醒配置")
     return "\n".join(lines)
@@ -159,10 +161,14 @@ def _permission(prefix: str) -> str:
 
 def _troupe(prefix: str) -> str:
     return f"""【帮助】剧组
-{prefix}初始化剧组 剧组名称   管理员在群内初始化
-{prefix}剧组信息             查看当前剧组
-{prefix}修改剧组名称 新名称   管理员
-{prefix}解绑剧组             管理员；停止提醒，历史数据保留"""
+{prefix}初始化剧组 剧组名称              管理员在群内初始化
+{prefix}初始化剧组 剧组名称 群号=123456789  管理员私聊初始化
+{prefix}剧组列表                      查看自己参与 / 管理的剧组
+{prefix}剧组信息                      查看当前剧组
+{prefix}修改剧组名称 新名称            管理员
+{prefix}解绑剧组                      管理员；停止提醒，历史数据保留
+
+管理多个剧组时，私聊命令用 剧组=名称 指定。"""
 
 
 def _actor(prefix: str) -> str:
