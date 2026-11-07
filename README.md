@@ -71,7 +71,7 @@ python -m venv .venv
 ## 生产部署（Docker Compose）
 
 ```bash
-git clone <本仓库地址> where_are_my_actors
+git clone https://github.com/ZhangYin256/where_are_my_actors where_are_my_actors
 cd where_are_my_actors
 
 # 1. 准备配置

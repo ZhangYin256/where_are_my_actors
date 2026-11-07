@@ -11,15 +11,18 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter
 from nonebot.log import logger
 
+ROOT = Path(__file__).resolve().parent
+
 
 def main() -> None:
-    log_dir = Path(os.environ.get("REHEARSAL_LOG_DIR", "logs"))
+    log_dir = Path(os.environ.get("REHEARSAL_LOG_DIR", str(ROOT / "logs")))
     log_dir.mkdir(parents=True, exist_ok=True)
     nonebot.init()
     driver = nonebot.get_driver()
@@ -31,7 +34,11 @@ def main() -> None:
         encoding="utf-8",
         enqueue=True,
     )
-    nonebot.load_from_toml("pyproject.toml")
+    # 显式加载插件，不依赖运行时存在 pyproject.toml（容器镜像可能只包含源码目录）
+    plugin_dir = ROOT / "plugins"
+    if str(plugin_dir) not in sys.path:
+        sys.path.insert(0, str(plugin_dir))
+    nonebot.load_plugin("rehearsal_bot")
     nonebot.run()
 
 
