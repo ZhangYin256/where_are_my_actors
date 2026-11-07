@@ -2,6 +2,21 @@
 
 本项目遵循语义化版本；版本号与 `pyproject.toml` 保持一致。
 
+## v1.0.1 — 2026-11-07
+
+### 修复
+
+- 修复 Docker 镜像缺少 `pyproject.toml` 导致容器启动时报
+  `FileNotFoundError: pyproject.toml` 并不断重启的问题。
+- `bot.py` 改为显式从项目 `plugins/` 目录加载 `rehearsal_bot` 插件，
+  不再依赖运行时存在 `pyproject.toml`，因此从任意工作目录/精简镜像都能启动。
+- Dockerfile 补充复制 `pyproject.toml`，并显式设置 `REHEARSAL_LOG_DIR=/logs`，
+  保证日志写入挂载目录。
+- 超长消息分段发送时，网关在分片之间按 `REHEARSAL_SEND_INTERVAL` 增加间隔，
+  降低风控风险。
+
+> 从 v1.0.0 升级：`docker compose build --no-cache bot && docker compose up -d bot`。
+
 ## v1.0.0 — 2026-11-07
 
 首个可交付版本，对应 `docs/SPEC.md` v1.0。

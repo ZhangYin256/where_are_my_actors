@@ -278,6 +278,24 @@ docker compose logs --tail=100 bot
 
 这是 NoneBot 在 NapCat 未启动 / 未登录时的正常重连提示。先按上一节检查 NapCat 与 token；连接成功后会自动停止报错并输出 `QQ 账号已连接`。
 
+### bot 容器反复重启，日志显示 `FileNotFoundError: pyproject.toml`
+
+v1.0.1 已修复：`bot.py` 不再依赖运行时的 `pyproject.toml`，改为显式从 `plugins/` 加载插件；镜像也会复制该文件。
+
+如果你是旧镜像，请重新构建：
+
+```bash
+docker compose build --no-cache bot
+docker compose up -d bot
+docker compose logs -f --tail=100 bot
+```
+
+确认镜像内文件：
+
+```bash
+docker compose exec bot ls -l /app/pyproject.toml /app/plugins/rehearsal_bot/__init__.py
+```
+
 ### 扫码后立即掉线
 
 - 检查服务器时间是否准确（误差过大会导致登录失败）；

@@ -22,9 +22,10 @@ ROOT = Path(__file__).resolve().parent
 
 
 def main() -> None:
+    nonebot.init()
+    # nonebot.init() 已加载 .env，此时读取日志目录才能让 .env 中的配置生效
     log_dir = Path(os.environ.get("REHEARSAL_LOG_DIR", str(ROOT / "logs")))
     log_dir.mkdir(parents=True, exist_ok=True)
-    nonebot.init()
     driver = nonebot.get_driver()
     driver.register_adapter(Adapter)
     logger.add(
