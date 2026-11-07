@@ -41,6 +41,7 @@ cp .env.example .env
 | `REHEARSAL_TIMEZONE` | `Asia/Shanghai` | 新建剧组的默认时区 |
 | `REHEARSAL_DEFAULT_REMIND_MINUTES` | `30` | 新建剧组的默认提醒（可多个：`60,30`） |
 | `REHEARSAL_DEFAULT_PRIVATE_REMIND` | `false` | 新建剧组是否默认私聊提醒 |
+| `REHEARSAL_PUBLISH_CONFIRM` | `false` | 新建剧组是否总是预览确认；`false` 时无问题直接发布 |
 | `REHEARSAL_EVENING_THRESHOLD` | `9` | 新建剧组的晚上判定阈值 |
 | `REHEARSAL_DEGRADE_AT_SCOPE` | `participants` | 非管理员降级 @ 范围：`participants` / `all_members` |
 | `REHEARSAL_SEND_INTERVAL` | `1.0` | 消息发送最小间隔（秒），防风控 |
@@ -70,6 +71,7 @@ REHEARSAL_DB_PATH=data/rehearsal.db
 REHEARSAL_COMMAND_PREFIX=#
 REHEARSAL_TIMEZONE=Asia/Shanghai
 REHEARSAL_ALLOW_OWNER_INIT=true
+REHEARSAL_PUBLISH_CONFIRM=false
 ```
 
 ### 1.4 示例 `.env`（Docker Compose）
@@ -107,6 +109,7 @@ REHEARSAL_HEARTBEAT_PATH=/data/heartbeat
 #配置 晚上阈值=9
 #配置 显示标签=开
 #配置 显示空字段=开
+#配置 发布确认=开
 #配置 降级范围=参与人员
 #配置 时区=Asia/Shanghai
 #提醒默认 30
@@ -119,6 +122,7 @@ REHEARSAL_HEARTBEAT_PATH=/data/heartbeat
 | 晚上阈值 | `晚上阈值` | 9 | 开始小时小于该值按晚上解释 |
 | 显示标签 | `显示标签` | 关 | 通知 / 提醒中显示 `@张三（湖区）` |
 | 显示空字段 | `显示空字段` | 关 | 地点 / 内容 / 备注为空时显示「暂无」 |
+| 发布确认 | `发布确认` | 关 | 关=无问题时直接发布，有问题才预览；开=总是预览确认 |
 | 降级范围 | `降级范围` | 参与人员 | 非群管理员时逐个 @ 的目标：`参与人员` / `全体成员` |
 | 时区 | `时区` | Asia/Shanghai | 该剧组所有时间解析与展示 |
 

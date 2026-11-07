@@ -3,10 +3,12 @@
 对照 `docs/SPEC.md` v1.0 的验收标准与功能需求，逐项说明实现位置与验证方式。
 
 - 验收日期：2026-11-07
-- 版本：1.0.1
-- 自动化测试：**185 个，全部通过**
+- 版本：1.1.0
+- 自动化测试：**195 个，全部通过**
 - 测试环境：Windows 11 · Python 3.12.14 · SQLite 3（stdlib）· pytest 9
 - 复现命令：`uv run pytest`
+- 需求变更：v1.1 调整发布确认默认行为（无问题直接发布，可配置为总是预览），
+  私聊管理按“本人管理的剧组”选择剧组；详见第 11 节。
 
 > Docker 相关条目提供了完整文件与部署步骤；本仓库开发环境未安装 Docker，镜像构建请在具备 Docker 的机器上按 [DEPLOY-DOCKER.md](DEPLOY-DOCKER.md) 执行。
 
@@ -35,7 +37,7 @@
 | 5 | 导演不能授权导演 | `grant_director` 等级 4 | `test_permissions.py::test_director_cannot_grant_director` |
 | 6 | 群主自动成为导演 | 初始化 / 消息 / 同步时写入 `auto_group_admin` | `test_permissions.py::test_init_troupe_by_owner`、`test_sync_members` |
 | 7 | 群管理员自动成为导演 | `_sync_sender_role` + 定时同步 + 群管理变更事件 | `test_permissions.py::test_group_admin_auto_director_added` |
-| 8 | 一个 QQ 可在多剧组任导演 / 副导演 | 角色按 `troupe_id` 隔离；管理员全局 | `test_queries.py::test_my_schedule_private_across_troupes`、`test_admin.py::test_admin_role_is_global` |
+| 8 | 一个 QQ 可在多剧组任导演 / 副导演 | 角色按 `troupe_id` 隔离；管理员全局；私聊管理按本人管理剧组选择 | `test_multi_troupe.py::test_private_management_uses_only_managed_troupes`、`test_private_management_multiple_requires_troupe`、`test_admin.py::test_admin_role_is_global` |
 
 补充验证：
 
@@ -47,7 +49,7 @@
 
 ---
 
-## 3. 发布验收（规格 12.3）
+## 3. 发布验收（规格 12.3 + v1.1 调整）
 
 | # | 验收项 | 实现 | 测试 |
 |---:|---|---|---|
@@ -59,8 +61,9 @@
 | 6 | 人员可包含文本人员 | `parse_participants` | `test_fields.py::test_parse_mentions_and_text_person` |
 | 7 | 文本人员提示不能精确提醒 | 预览渲染 `draft.text_participants` | `test_publish.py::test_text_person_warning` |
 | 8 | 已匹配人员会被 @ | `render.add_participants` → `At` 段 | `test_publish.py::test_publish_preview_and_confirm` |
-| 9 | 发布前支持预览 | `_cmd_publish` → `create_pending` | `test_publish.py::test_publish_preview_and_confirm` |
-| 10 | 确认后才正式发送 | `#确认发布` 才创建排练并发送 | `test_publish.py::test_publish_requires_preview_confirmation` |
+| 9 | 发布确认可配置（默认无问题直接发送） | `publish_confirm_when_clean` + `_cmd_publish` / `_publish_now` | `test_publish.py::test_publish_auto_sends_when_no_warnings`、`test_publish_with_warnings_still_previews_when_auto`、`test_config_publish_confirm_toggle` |
+| 10 | 预览时必须确认后才正式发送 | `#确认发布` 才写库并发送；直接发布仅限无风险且配置为关 | `test_publish.py::test_publish_requires_preview_confirmation`、`test_publish_auto_sends_when_no_warnings` |
+| 11 | 新建剧组默认 `发布确认=关` | `troupe.publish_confirm_when_clean` 默认 0 / `REHEARSAL_PUBLISH_CONFIRM=false` | `test_db.py::test_publish_confirm_defaults_to_false` |
 
 ---
 
@@ -169,7 +172,7 @@
 | FR-01 剧组绑定 | `_cmd_init_troupe` / `_cmd_rename_troupe` / `_cmd_unbind_troupe`，`troupe.group_id UNIQUE` | `test_permissions.py::test_init_troupe_by_owner`、`test_admin_rename_troupe`、`test_unbind_requires_admin_and_stops_commands`；`test_db.py::test_troupe_group_unique` |
 | FR-02 角色授权 | `_cmd_grant`、`_cmd_global_admin`、`role_binding` / `admin_binding` | `test_permissions.py`（18 例） |
 | FR-03 演员管理 | `_cmd_actor`、`actor_profile` | `test_admin.py::test_add_and_list_actors`、`test_actor_alias_and_tag`、`test_remove_actor` |
-| FR-04 发布通知 | `_cmd_publish` + `preview_message` + `notice_message` | `test_publish.py`（20 例） |
+| FR-04 发布通知 | `_cmd_publish` / `_publish_now` / `publish_confirm_when_clean` + `preview_message` + `notice_message` | `test_publish.py`（23 例） |
 | FR-05 时间解析 | `rehearsal/timeparse.py` | `test_timeparse.py`（35 例） |
 | FR-06 人员解析 | `rehearsal/fields.py::parse_participants`、`service._parse_people` | `test_fields.py`、`test_reminders.py` |
 | FR-07 查看通知 | `_cmd_list` / `_cmd_detail` / `_cmd_my_schedule` | `test_queries.py`（13 例） |
@@ -200,8 +203,8 @@
 | 长消息分段 | `split_message` + gateway 拆分，`test_message.py` |
 | 失败重试 | 最多 3 次，可配置；失败写审计 |
 | 权限 / 隐私 | 权限矩阵、私聊仅本人、审计仅管理角色 |
-| 可维护性 | 模块化、185 测试、中文日志/错误、备份脚本 |
-| 可用性 | 中文提示、预览、二次确认、帮助、错误修正建议 |
+| 可维护性 | 模块化、195 测试、中文日志/错误、备份脚本 |
+| 可用性 | 中文提示、智能发布确认、帮助、错误修正建议 |
 
 ---
 
@@ -210,6 +213,8 @@
 | 项目 | 说明 |
 |---|---|
 | 管理员存储 | 使用独立 `admin_binding` 全局表，而非规格 `role_binding` 的 troupe 级记录；符合“管理员管理所有剧组”的语义 |
+| 发布确认 | 规格要求发布前必须预览确认；v1.1 起默认“无问题直接发布”，有风险仍强制预览，可用 `发布确认=开` 恢复总是预览（需求变更） |
+| 私聊多剧组 | 管理命令按“本人担任导演 / 副导演的剧组”自动选择，恰好一个时可省略 `剧组=`；查询按参与剧组判断（需求变更） |
 | 重发确认 | 增加 `#确认重发 R001`，满足“重发前支持预览” |
 | 彻底删除 | 增加 `#彻底删除`（仅管理员），对应“管理员可物理删除” |
 | 群主初始化 | 默认允许群主自助 `#初始化剧组`，可通过 `REHEARSAL_ALLOW_OWNER_INIT=false` 关闭 |
@@ -231,9 +236,13 @@
 - [ ] 群内 `#初始化剧组 验收剧组` 成功
 - [ ] `#授权副导演 @测试账号` 成功；该账号可发布、可删除、可查审计
 - [ ] 该账号 `#授权导演 @某人` 被拒绝
-- [ ] 发布通知：预览 → `#确认发布` → 群内收到 `#排练通知`
+- [ ] 发布通知（无风险）：`#发布排练` 直接发送 `#排练通知`，无需确认
+- [ ] `#配置 发布确认=开` 后，同样内容返回预览，`#确认发布` 后发送
+- [ ] 带文本人员的通知始终返回预览并提示不能 @
 - [ ] 中文时间：`周五7~10` 解析为 19:00-22:00
 - [ ] 文本人员提示“不能 @”，群通知中文本人员未被 @
+- [ ] 私聊管理多剧组：管理一个时可省略 `剧组=`；管理多个时提示指定
+- [ ] 私聊查询多剧组：同时参与多个时要求 `剧组=`
 - [ ] 修改地点 → 保存后群内无消息 → `#排练重发` + 确认 → 群内收到更新通知
 - [ ] 取消排练 → `通知=是` → 群内收到 `#排练取消通知`
 - [ ] 私聊 `#我的排练` 只显示本人安排，无他人 QQ
@@ -249,6 +258,7 @@
 
 - 规格中的 **P0 功能全部实现**；
 - **12.1 – 12.8 验收项均有对应实现与自动化测试**；
-- 185 个测试覆盖时间、权限、发布、修改、提醒、查询、配置、审计、模拟器与数据库；
+- v1.1 需求变更（发布确认可配置、私聊多剧组选择）已实现并补充测试；
+- 195 个测试覆盖时间、权限、发布、修改、提醒、查询、配置、审计、模拟器与数据库；
 - 部署、使用、配置、运维、架构、开发文档齐全；
 - 遗留差异均已在第 11 节说明，不阻塞验收。

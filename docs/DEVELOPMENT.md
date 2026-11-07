@@ -53,7 +53,7 @@ rehearsal/                 核心库（不依赖 NoneBot）
 └── simulator.py           离线模拟器
 
 plugins/rehearsal_bot/     NoneBot2 适配层（事件 → 核心 → 发送）
-tests/                     pytest（185 个）
+tests/                     pytest（195 个）
 scripts/                   备份 / 健康检查 / 演示生成
 docs/                      文档
 ```
@@ -120,11 +120,12 @@ async def test_example(app):
 |---|---|
 | `test_timeparse.py` | 时间解析与格式化（35 例） |
 | `test_fields.py` | 字段、人员、标签、提醒、范围 |
-| `test_publish.py` | 发布预览、确认、空值、@all、私聊发布 |
+| `test_publish.py` | 发布自动发送 / 预览确认、空值、@all、私聊发布 |
 | `test_lifecycle.py` | 修改、重发、取消、删除、彻底删除 |
 | `test_reminders.py` | 触发、私聊、降级、分段、重试、重启、幂等 |
 | `test_queries.py` | 列表、历史、详情、我的排练、隐私 |
 | `test_permissions.py` | 权限矩阵、自动导演、授权、解绑、初始化 |
+| `test_multi_troupe.py` | 私聊多剧组选择、管理 / 查询候选剧组 |
 | `test_admin.py` | 演员、配置、全局配置、审计、帮助 |
 | `test_message.py` | 长消息拆分、OneBot 转换 |
 | `test_simulator.py` | 模拟器端到端 |
@@ -200,7 +201,7 @@ async def test_stats(app):
 
 ## 6. 数据库变更
 
-当前 `SCHEMA_VERSION = 1`，`db.py` 的 `_create_schema` 使用 `CREATE TABLE IF NOT EXISTS`，并按 `PRAGMA user_version` 校验。
+当前 `SCHEMA_VERSION = 2`，`db.py` 的 `_create_schema` 使用 `CREATE TABLE IF NOT EXISTS`，并按 `PRAGMA user_version` 执行增量迁移。v2 为 `troupe` 增加了 `publish_confirm_when_clean` 列，可作为新增字段迁移的示例。
 
 新增字段 / 表时：
 
@@ -314,7 +315,7 @@ uv run ruff format rehearsal plugins tests bot.py  # 可选
 5. `uv run ruff check ...` 通过；
 6. `uv run python scripts/demo.py` 更新演示文档；
 7. `docker compose build bot` 本地验证（如可用）；
-8. 打 tag：`git tag v1.0.0 && git push --tags`。
+8. 打 tag：`git tag v1.1.0 && git push --tags`。
 
 GitHub Actions 已配置基础 CI（见 `.github/workflows/ci.yml`）：安装依赖、ruff、pytest。
 

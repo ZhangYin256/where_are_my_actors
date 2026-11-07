@@ -12,6 +12,7 @@ class Config(BaseModel):
     rehearsal_timezone: str = "Asia/Shanghai"
     rehearsal_default_remind_minutes: str = "30"
     rehearsal_default_private_remind: bool = False
+    rehearsal_publish_confirm: bool = False
     rehearsal_evening_threshold: int = 9
     rehearsal_degrade_at_scope: str = "participants"
     rehearsal_send_interval: float = 1.0

@@ -119,6 +119,10 @@ def app(tmp_path):
     repo.add_role(troupe_a.id, "10001", "director", source="auto_group_admin")
     repo.add_role(troupe_a.id, "10002", "director", source="auto_group_admin")
     repo.add_role(troupe_b.id, "10002", "director", source="auto_group_admin")
+    # 测试默认走“总是预览”流程，方便断言预览 ID；
+    # “无问题时直接发布”的默认行为在 test_publish.py 中单独覆盖。
+    repo.update_troupe(troupe_a.id, publish_confirm_when_clean=True)
+    repo.update_troupe(troupe_b.id, publish_confirm_when_clean=True)
     return Harness(
         service=service,
         repo=repo,

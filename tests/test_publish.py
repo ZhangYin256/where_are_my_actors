@@ -217,3 +217,46 @@ async def test_publish_with_missed_reminder_window(app):
     app.gateway.clear()
     assert await app.service.run_due_reminders() == 0
     assert app.gateway.messages_to("100001") == []
+
+
+async def test_publish_auto_sends_when_no_warnings(app):
+    """默认（发布确认=关）：没有风险提示时直接发布，不生成预览。"""
+    app.repo.update_troupe(app.troupe_a.id, publish_confirm_when_clean=False)
+    reply = await app.text("#发布排练\n时间=明天7~9\n地点=一排\n人员=@王五")
+    assert "【发布预览】" not in reply
+    assert "已发布排练通知" in reply
+    messages = app.gateway.messages_to("100001")
+    assert len(messages) == 1
+    assert messages[0].plain_text().startswith("#排练通知")
+    rehearsal = app.repo.get_rehearsal(app.troupe_a.id, 1)
+    assert rehearsal is not None
+    assert rehearsal.seq == 1
+
+
+async def test_publish_with_warnings_still_previews_when_auto(app):
+    """发布确认=关，但存在文本人员等风险时仍需预览确认。"""
+    app.repo.update_troupe(app.troupe_a.id, publish_confirm_when_clean=False)
+    preview = await app.text("#发布排练\n时间=明天7~9\n人员=@王五 制作组")
+    assert "【发布预览】" in preview
+    assert "无法精确匹配" in preview
+    assert "P001" in preview
+    assert app.repo.get_rehearsal(app.troupe_a.id, 1) is None
+
+
+async def test_config_publish_confirm_toggle(app):
+    app.repo.update_troupe(app.troupe_a.id, publish_confirm_when_clean=False)
+    enabled = await app.text(
+        "#配置 发布确认=开", qq="10002", role="admin", nickname="李四"
+    )
+    assert "总是预览" in enabled
+    preview = await app.text("#发布排练\n时间=明天7~9\n人员=@王五")
+    assert "【发布预览】" in preview
+    assert app.repo.get_rehearsal(app.troupe_a.id, 1) is None
+
+    disabled = await app.text(
+        "#配置 发布确认=关", qq="10002", role="admin", nickname="李四"
+    )
+    assert "无问题时直接发布" in disabled
+    reply = await app.text("#发布排练\n时间=明天7~9\n人员=@王五")
+    assert "已发布排练通知" in reply
+    assert app.repo.get_rehearsal(app.troupe_a.id, 1) is not None

@@ -33,7 +33,7 @@ from .models import (
 )
 from .timeutil import iso, now_utc, parse_iso
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS troupe (
     ambiguous_evening_threshold INTEGER NOT NULL DEFAULT 9,
     show_tags                 INTEGER NOT NULL DEFAULT 0,
     show_empty                INTEGER NOT NULL DEFAULT 0,
+    publish_confirm_when_clean INTEGER NOT NULL DEFAULT 0,
     degrade_at_scope          TEXT NOT NULL DEFAULT 'participants',
     status                    TEXT NOT NULL DEFAULT 'active',
     created_at                TEXT NOT NULL
@@ -236,12 +237,25 @@ class Database:
         with self._lock:
             self.conn.executescript(SCHEMA_SQL)
             version = self.conn.execute("PRAGMA user_version").fetchone()[0]
-            if version == 0:
-                self.conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
-            elif version > SCHEMA_VERSION:
+            if version > SCHEMA_VERSION:
                 raise RuntimeError(
                     f"数据库版本 {version} 高于程序支持的版本 {SCHEMA_VERSION}，请升级程序。"
                 )
+            if version < SCHEMA_VERSION:
+                self._migrate(version)
+
+    def _migrate(self, from_version: int) -> None:
+        """按版本号增量迁移；只增不删，保留已有数据。"""
+        if from_version < 2:
+            columns = {
+                row["name"] for row in self.conn.execute("PRAGMA table_info(troupe)")
+            }
+            if "publish_confirm_when_clean" not in columns:
+                self.conn.execute(
+                    "ALTER TABLE troupe ADD COLUMN "
+                    "publish_confirm_when_clean INTEGER NOT NULL DEFAULT 0"
+                )
+        self.conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     @contextmanager
     def tx(self) -> Iterator[sqlite3.Connection]:
@@ -323,6 +337,7 @@ class Repository:
         ambiguous_evening_threshold: int = 9,
         show_tags: bool = False,
         show_empty: bool = False,
+        publish_confirm_when_clean: bool = False,
         degrade_at_scope: str = "participants",
         now: datetime | None = None,
     ) -> Troupe:
@@ -331,9 +346,10 @@ class Repository:
             """
             INSERT INTO troupe (
                 name, group_id, timezone, default_remind_minutes, private_remind,
-                ambiguous_evening_threshold, show_tags, show_empty, degrade_at_scope,
+                ambiguous_evening_threshold, show_tags, show_empty,
+                publish_confirm_when_clean, degrade_at_scope,
                 status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
             """,
             (
                 name,
@@ -344,6 +360,7 @@ class Repository:
                 int(ambiguous_evening_threshold),
                 int(show_tags),
                 int(show_empty),
+                int(publish_confirm_when_clean),
                 degrade_at_scope,
                 stamp,
             ),
@@ -388,13 +405,14 @@ class Repository:
             "ambiguous_evening_threshold",
             "show_tags",
             "show_empty",
+            "publish_confirm_when_clean",
             "degrade_at_scope",
             "status",
         }
         updates = {key: value for key, value in fields.items() if key in allowed}
         if not updates:
             return
-        for key in ("private_remind", "show_tags", "show_empty"):
+        for key in ("private_remind", "show_tags", "show_empty", "publish_confirm_when_clean"):
             if key in updates:
                 updates[key] = int(bool(updates[key]))
         if "ambiguous_evening_threshold" in updates:
@@ -549,6 +567,22 @@ class Repository:
             ORDER BY t.id
             """,
             (str(qq_id), str(qq_id)),
+        )
+        return [_row_to_troupe(row) for row in rows]
+
+    def list_troupes_for_management(self, qq_id: str) -> list[Troupe]:
+        """用户以导演 / 副导演身份管理的剧组。"""
+        rows = self.db.query_all(
+            """
+            SELECT t.* FROM troupe t
+            WHERE t.status = 'active' AND EXISTS (
+                SELECT 1 FROM role_binding rb
+                WHERE rb.troupe_id = t.id AND rb.qq_id = ?
+                  AND rb.status = 'active' AND rb.role IN ('director', 'assistant')
+            )
+            ORDER BY t.id
+            """,
+            (str(qq_id),),
         )
         return [_row_to_troupe(row) for row in rows]
 
@@ -1362,6 +1396,7 @@ def _row_to_troupe(row: sqlite3.Row) -> Troupe:
         ambiguous_evening_threshold=int(row["ambiguous_evening_threshold"]),
         show_tags=_as_bool(row["show_tags"]),
         show_empty=_as_bool(row["show_empty"]),
+        publish_confirm_when_clean=_as_bool(row["publish_confirm_when_clean"]),
         degrade_at_scope=row["degrade_at_scope"],
         status=row["status"],
         created_at=parse_iso(row["created_at"]),

@@ -22,7 +22,37 @@ def test_wal_mode_and_schema(tmp_path):
     database, repo = make_db(tmp_path)
     mode = database.conn.execute("PRAGMA journal_mode").fetchone()[0]
     assert mode.lower() == "wal"
-    assert database.conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert database.conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    columns = {
+        row["name"] for row in database.conn.execute("PRAGMA table_info(troupe)")
+    }
+    assert "publish_confirm_when_clean" in columns
+
+
+def test_publish_confirm_defaults_to_false(tmp_path):
+    database, repo = make_db(tmp_path)
+    troupe = repo.create_troupe("A", "100001", now=NOW)
+    assert troupe.publish_confirm_when_clean is False
+    updated = repo.create_troupe("B", "100002", publish_confirm_when_clean=True, now=NOW)
+    assert updated.publish_confirm_when_clean is True
+
+
+def test_migration_v1_to_v2(tmp_path):
+    path = tmp_path / "old.db"
+    database = Database(str(path))
+    database.conn.execute("ALTER TABLE troupe DROP COLUMN publish_confirm_when_clean")
+    database.conn.execute("PRAGMA user_version=1")
+    database.close()
+
+    migrated = Database(str(path))
+    try:
+        columns = {
+            row["name"] for row in migrated.conn.execute("PRAGMA table_info(troupe)")
+        }
+        assert "publish_confirm_when_clean" in columns
+        assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    finally:
+        migrated.close()
 
 
 def test_troupe_group_unique(tmp_path):

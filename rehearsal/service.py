@@ -69,6 +69,36 @@ CANCEL_KINDS = {
 }
 KIND_LABELS = {"publish": "发布", "modify": "修改", "republish": "重发"}
 
+# 需要“管理权限”的命令：私聊时只在本人的管理剧组中自动选择
+_MANAGE_COMMANDS = {
+    "修改剧组名称",
+    "解绑剧组",
+    "授权导演",
+    "取消导演",
+    "授权副导演",
+    "取消副导演",
+    "添加演员",
+    "移除演员",
+    "演员列表",
+    "演员别名",
+    "演员标签",
+    "发布排练",
+    "排练通知",
+    "排练修改",
+    "排练重发",
+    "取消排练",
+    "删除排练",
+    "彻底删除",
+    "确认取消",
+    "确认删除",
+    "取消删除",
+    "提醒默认",
+    "配置查看",
+    "配置",
+    "审计日志",
+    "同步成员",
+}
+
 _TROUPE_ARG_RE = re.compile(r"(?:^|\s)剧组\s*[=:：]\s*(?P<name>[^\s]+)")
 
 _CONFIG_ALIASES = {
@@ -78,6 +108,7 @@ _CONFIG_ALIASES = {
     "晚上阈值": "threshold",
     "显示标签": "show_tags",
     "显示空字段": "show_empty",
+    "发布确认": "publish_confirm",
     "降级范围": "degrade_scope",
     "时区": "timezone",
 }
@@ -293,7 +324,9 @@ class RehearsalService:
         if cmd in CONFIRM_KINDS or cmd in CANCEL_KINDS:
             return await self._cmd_pending(ctx, cmd, rest)
 
-        troupe, rest = self._resolve_troupe(ctx, rest)
+        troupe, rest = self._resolve_troupe(
+            ctx, rest, manage_only=cmd in _MANAGE_COMMANDS
+        )
         self._sync_sender_role(troupe, ctx)
         self._check_active(troupe, cmd)
 
@@ -357,9 +390,11 @@ class RehearsalService:
     # ------------------------------------------------------------------
     # 剧组解析 / 权限
     # ------------------------------------------------------------------
-    def _candidate_troupes(self, qq: str) -> list[Troupe]:
+    def _candidate_troupes(self, qq: str, *, manage_only: bool = False) -> list[Troupe]:
         if self.repo.is_admin(qq):
             return self.repo.list_active_troupes()
+        if manage_only:
+            return self.repo.list_troupes_for_management(qq)
         return self.repo.list_troupes_for_user(qq)
 
     def _extract_troupe_arg(self, text: str) -> tuple[str | None, str]:
@@ -370,7 +405,9 @@ class RehearsalService:
         stripped = (text[: match.start()] + " " + text[match.end() :]).strip()
         return name, stripped
 
-    def _resolve_troupe(self, ctx: CommandContext, rest: str) -> tuple[Troupe, str]:
+    def _resolve_troupe(
+        self, ctx: CommandContext, rest: str, *, manage_only: bool = False
+    ) -> tuple[Troupe, str]:
         name, rest = self._extract_troupe_arg(rest)
         if ctx.scope == "group":
             troupe = self.repo.get_troupe_by_group(ctx.group_id or "")
@@ -392,18 +429,28 @@ class RehearsalService:
                     + "\n".join(f"- {t.name}" for t in matches[:10])
                 )
             return matches[0], rest
-        candidates = self._candidate_troupes(ctx.qq)
+        candidates = self._candidate_troupes(ctx.qq, manage_only=manage_only)
         if len(candidates) == 1:
             return candidates[0], rest
         if not candidates:
+            if manage_only:
+                raise NotFound(
+                    "你还没有管理任何剧组（需要导演或副导演角色）。\n"
+                    "请先在剧组群内使用，或联系管理员授权。"
+                )
             raise NotFound(
                 "你还没有加入任何剧组。请先在剧组群内使用机器人，或联系管理员添加。"
+            )
+        if manage_only:
+            raise UserError(
+                "你管理多个剧组，请用 剧组=名称 指定：\n"
+                + "\n".join(f"- {t.name}" for t in candidates[:10])
+                + f"\n例如：{self.prefix}发布排练 剧组={candidates[0].name} 时间=周五7~10 ..."
             )
         raise UserError(
             "你参与了多个剧组，请用 剧组=名称 指定：\n"
             + "\n".join(f"- {t.name}" for t in candidates[:10])
-            + "\n例如："
-            + f"{self.prefix}发布排练 剧组={candidates[0].name} 时间=周五7~10 ..."
+            + f"\n例如：{self.prefix}排练列表 剧组={candidates[0].name} 本周"
         )
 
     def _role(self, troupe: Troupe, qq: str) -> str | None:
@@ -654,6 +701,7 @@ class RehearsalService:
             default_remind_minutes=self.settings.default_remind_minutes,
             private_remind=self.settings.default_private_remind,
             ambiguous_evening_threshold=self.settings.default_evening_threshold,
+            publish_confirm_when_clean=self.settings.default_publish_confirm,
             degrade_at_scope=self.settings.default_degrade_scope,
             now=now,
         )
@@ -1068,6 +1116,10 @@ class RehearsalService:
                 now=now,
             )
             raise
+        # 无任何风险提示时，按剧组配置决定是否直接发布（默认直接发布）
+        has_warnings = bool(draft.notes) or bool(draft.text_participants)
+        if not has_warnings and not troupe.publish_confirm_when_clean:
+            return await self._publish_now(ctx, troupe, draft)
         action = self.repo.create_pending(
             troupe.id,
             "publish",
@@ -1285,10 +1337,20 @@ class RehearsalService:
     async def _execute_publish(
         self, ctx: CommandContext, action: PendingAction, troupe: Troupe
     ) -> list[Reply]:
-        now = self.now()
         draft = _draft_from_payload(action.payload)
+        return await self._publish_now(ctx, troupe, draft, action=action)
+
+    async def _publish_now(
+        self,
+        ctx: CommandContext,
+        troupe: Troupe,
+        draft: RehearsalDraft,
+        *,
+        action: PendingAction | None = None,
+    ) -> list[Reply]:
+        now = self.now()
         rehearsal = self.repo.create_rehearsal(
-            troupe.id, draft, created_by=action.operator_qq, now=now
+            troupe.id, draft, created_by=ctx.qq, now=now
         )
         self.repo.create_jobs(
             rehearsal.id,
@@ -1296,7 +1358,8 @@ class RehearsalService:
             self._triggers(rehearsal.start_at, draft.remind_minutes),
             now,
         )
-        self.repo.set_pending_status(action.id, "consumed")
+        if action is not None:
+            self.repo.set_pending_status(action.id, "consumed")
         summary = (
             f"编号{rehearsal.seq} "
             f"{format_notice_time(rehearsal.start_at.astimezone(troupe.tz), rehearsal.end_at.astimezone(troupe.tz), now.astimezone(troupe.tz))}"
@@ -1791,6 +1854,18 @@ class RehearsalService:
                 flag = _bool_value(value, "显示空字段")
                 updates["show_empty"] = flag
                 summaries.append(f"显示空字段={'开' if flag else '关'}")
+            elif key == "publish_confirm":
+                text_value = value.strip()
+                if text_value in ("自动", "智能"):
+                    flag = False
+                elif text_value in ("总是", "始终"):
+                    flag = True
+                else:
+                    flag = _bool_value(text_value, "发布确认")
+                updates["publish_confirm_when_clean"] = flag
+                summaries.append(
+                    f"发布确认={'总是预览' if flag else '无问题时直接发布'}"
+                )
             elif key == "degrade_scope":
                 flag_value = value.strip().casefold()
                 if flag_value in ("全体", "全体成员", "all_members", "群成员"):

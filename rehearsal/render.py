@@ -394,6 +394,11 @@ def troupe_info_message(
     message.add_text(f"私聊提醒：{'开启' if troupe.private_remind else '关闭'}\n")
     message.add_text(f"晚上阈值：{troupe.ambiguous_evening_threshold}\n")
     message.add_text(f"显示备注标签：{'开启' if troupe.show_tags else '关闭'}\n")
+    message.add_text(
+        "发布确认："
+        + ("总是预览" if troupe.publish_confirm_when_clean else "无问题时直接发布")
+        + "\n"
+    )
     message.add_text(f"我的角色：{'管理员' if is_admin else role_label}\n")
     message.add_text(f"当前时间：{local_now:%Y-%m-%d %H:%M}（{troupe.timezone}）\n")
     if troupe.created_at:
@@ -411,6 +416,11 @@ def config_message(troupe: Troupe, settings: dict[str, str]) -> Message:
     )
     message.add_text(f"显示标签：{'开启' if troupe.show_tags else '关闭'}\n")
     message.add_text(f"显示空字段：{'开启' if troupe.show_empty else '关闭'}\n")
+    message.add_text(
+        "发布确认："
+        + ("总是预览" if troupe.publish_confirm_when_clean else "无问题时直接发布")
+        + "\n"
+    )
     scope = "全体群成员" if troupe.degrade_at_scope == "all_members" else "仅参与人员"
     message.add_text(f"降级 @ 范围：{scope}\n")
     message.add_text(f"时区：{troupe.timezone}\n")

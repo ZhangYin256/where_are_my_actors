@@ -15,6 +15,7 @@ class Settings:
     default_private_remind: bool = False
     default_evening_threshold: int = 9
     default_degrade_scope: str = "participants"
+    default_publish_confirm: bool = False
     send_interval: float = 1.0
     max_message_chars: int = 1500
     max_reminder_attempts: int = 3

@@ -76,6 +76,7 @@ def _build_settings() -> Settings:
         default_private_remind=plugin_config.rehearsal_default_private_remind,
         default_evening_threshold=plugin_config.rehearsal_evening_threshold,
         default_degrade_scope=plugin_config.rehearsal_degrade_at_scope,
+        default_publish_confirm=plugin_config.rehearsal_publish_confirm,
         send_interval=plugin_config.rehearsal_send_interval,
         max_message_chars=plugin_config.rehearsal_max_message_chars,
         max_reminder_attempts=plugin_config.rehearsal_max_reminder_attempts,

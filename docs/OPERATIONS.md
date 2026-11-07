@@ -214,7 +214,7 @@ docker compose up -d bot
 docker compose logs -f --tail=100 bot
 ```
 
-数据库版本由 `PRAGMA user_version` 管理，当前为 `1`。如果程序检测到数据库版本高于自身支持版本，会拒绝启动，避免写坏数据。
+数据库版本由 `PRAGMA user_version` 管理，当前为 `2`。程序启动时会自动执行增量迁移（v1 → v2 增加 `publish_confirm_when_clean` 列，不改动已有数据）。如果程序检测到数据库版本高于自身支持版本，会拒绝启动，避免写坏数据。升级前仍建议先备份。
 
 ### 回滚
 

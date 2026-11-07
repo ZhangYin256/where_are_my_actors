@@ -212,6 +212,7 @@ class Troupe:
     ambiguous_evening_threshold: int = 9
     show_tags: bool = False
     show_empty: bool = False
+    publish_confirm_when_clean: bool = False
     degrade_at_scope: str = "participants"
     status: str = "active"
     created_at: datetime | None = None
