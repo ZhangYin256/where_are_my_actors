@@ -1,0 +1,58 @@
+[project]
+name = "where-are-my-actors"
+version = "1.0.0"
+description = "排练通知 QQ 机器人（NoneBot2 + NapCat + SQLite）"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "where_are_my_actors contributors" }]
+keywords = ["qq", "nonebot2", "napcat", "rehearsal", "onebot"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "nonebot2[websockets]>=2.4,<2.6",
+    "nonebot-adapter-onebot>=2.4,<2.5",
+    "tzdata>=2024.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q"
+filterwarnings = [
+    "ignore::DeprecationWarning:nonebot.*",
+    "ignore::DeprecationWarning:pydantic.*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["rehearsal", "plugins", "tests"]
+exclude = [".venv", "data", "logs", "deploy/napcat"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
+ignore = ["E501", "SIM108"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["rehearsal", "rehearsal_bot"]
+
+[tool.nonebot]
+plugin_dirs = ["plugins"]

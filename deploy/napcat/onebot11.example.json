@@ -1,0 +1,27 @@
+{
+  "_comment": "NapCat OneBot V11 配置示例（仅结构参考）。不同 NapCat 版本的字段可能不同，推荐在 WebUI 中配置。核心要求：开启 WebSocket 服务器，端口 3001，token 与 .env 的 ONEBOT_ACCESS_TOKEN 一致。",
+  "network": {
+    "httpServers": [],
+    "httpSseServers": [],
+    "httpClients": [],
+    "websocketServers": [
+      {
+        "name": "rehearsal-bot",
+        "enable": true,
+        "host": "0.0.0.0",
+        "port": 3001,
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "token": "change-me-please",
+        "enableForcePushEvent": true,
+        "debug": false,
+        "heartInterval": 30000
+      }
+    ],
+    "websocketClients": [],
+    "plugins": []
+  },
+  "musicSignUrl": "",
+  "enableLocalFile2Url": false,
+  "parseMultMsg": false
+}

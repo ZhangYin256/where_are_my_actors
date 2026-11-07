@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 运行时数据（勿提交）
+data/
+logs/
+*.db
+*.db-wal
+*.db-shm
+
+# NapCat / QQ 登录会话
+deploy/napcat/qq/
+deploy/napcat/config/
+deploy/napcat/cache/
+
+# 本地配置
+.env
+.env.*
+!.env.example
+*.local
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
